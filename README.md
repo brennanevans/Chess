@@ -8,4 +8,5 @@ My own implementation of the board game Chess including a custom chess AI oppone
 - Make AI opponent
 - Document and refactor AI code
 
-Full game can be run by another file by importing it and calling the main method or executed from command line (however, this will use defaults for customisable options)
+## Attribution
+- Piece icons were offered for free under https://creativecommons.org/publicdomain/zero/1.0/ at https://rhosgfx.itch.io/vector-chess-pieces
