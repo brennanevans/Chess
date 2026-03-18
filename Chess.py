@@ -10,8 +10,7 @@ class Pieces():
         self.col = col
         self.colour = colour
         
-        _cols = ["A","B","C","D","E","F","G","H"]
-        self.notation = _cols[col] + str(row+1)
+        self._updateNotation()
 
         # Reset self.moves to [] for every piece on one team when they make their move
         # Moves that their pieces can make only change then and can be recalculated on their turn
@@ -25,12 +24,17 @@ class Pieces():
     def __repr__(self):
         return str(type(self).__name__) + ":" + self.notation
     
-    def _addIfLegal(self,row,col,capturesOnly=False):
+    def _updateNotation(self):
+        _cols = ["A","B","C","D","E","F","G","H"]
+        self.notation = _cols[self.col] + str(self.row+1)
+    
+    def _addIfLegal(self,row,col,capturesOnly=False,capturesForbidden=False):
         if row<0 or row>7 or col<0 or col>7:
             return False
-        if board.grid[row][col] != None:
-            if board.grid[row][col].colour != self.colour:
-                self.moves.append((row,col))
+        if board.pieceGrid[row][col] != None:
+            if board.pieceGrid[row][col].colour != self.colour:
+                if not capturesForbidden:
+                    self.moves.append((row,col))
             return False
         else:
             if capturesOnly:
@@ -62,9 +66,8 @@ class Pieces():
             if not self._addIfLegal(row,self.col):
                 break
 
-    def _getDiagonalMoves(self,maxMovement=7,capturesOnly=False):
-        # maxMovement=7 for bishop,queen,rook, 2 for pawn first move, 
-        # 1 for King and pawn taking/2nd move+
+    def _getDiagonalMoves(self,maxMovement=7):
+        # maxMovement=7 for bishop,queen,rook and 1 for King
         minHorizontal = max(-1,self.col-maxMovement)
         maxHorizontal = min(8,self.col+maxMovement)
         minVertical = max(-1,self.row-maxMovement)
@@ -77,7 +80,7 @@ class Pieces():
         row = self.row-1
         column = self.col-1
         while row>=minVertical and column>=minHorizontal: # "Down Left"
-            if not self._addIfLegal(row,column,capturesOnly):
+            if not self._addIfLegal(row,column):
                 break
             row -=1
             column-=1
@@ -85,7 +88,7 @@ class Pieces():
         row = self.row-1
         column = self.col+1
         while row>=minVertical and column<=maxHorizontal: # "Down Right"
-            if not self._addIfLegal(row,column,capturesOnly):
+            if not self._addIfLegal(row,column):
                 break
             row -=1
             column+=1
@@ -93,7 +96,7 @@ class Pieces():
         row = self.row+1
         column = self.col-1
         while row<=maxVertical and column>=minHorizontal:# "Up Left"
-            if not self._addIfLegal(row,column,capturesOnly):
+            if not self._addIfLegal(row,column):
                 break
             row+=1
             column-=1
@@ -101,7 +104,7 @@ class Pieces():
         row = self.row+1
         column = self.col+1
         while row<=maxVertical  and column<=maxHorizontal:# "Up Right"
-            if not self._addIfLegal(row,column,capturesOnly):
+            if not self._addIfLegal(row,column):
                 break
             row+=1
             column+=1
@@ -109,11 +112,29 @@ class Pieces():
     def move(self,row:int,col:int):
         global board
         if (row,col) in self.moves:
-            board.grid[self.row][self.col] = None
-            board.grid[row][col] = self
+            if isinstance(self,Pawn):
+                self.firstMove = False
+                if abs(self.row-row) == 2:
+                    self.justMovedTwo = True
+                else:
+                    self.justMovedTwo = False
+                
+            board.pieceGrid[self.row][self.col] = None
+            board._update([board.squareGrid[self.row][self.col]])
+
+            board.pieceGrid[row][col] = self
             self.row = row
             self.col = col
+            board._update([board.squareGrid[self.row][self.col]])
+
+            self._updateNotation()
             
+
+            for row in board.pieceGrid:
+                for piece in row:
+                    if piece != None:
+                        piece.moves = []
+
             return True
         else:
             return False
@@ -187,36 +208,57 @@ class Pawn(Pieces):
 
     def getMoves(self):
         if self.moves == []:
-            if self.firstMove:
-                self._getVerticalMoves(2)
+            # Decided to bypass vertical and horizonal move functions for pawns as they move so differently to other pieces
+
+            # Black pawns move down board so row indexes decrease rather than increase
+            if self.colour == "Black":
+                scale = -1
             else:
-                self._getVerticalMoves(1)
-            self._getDiagonalMoves(1,True)
+                scale = 1
+
+            #Vertical moves - can only possibly move two if can move one
+            if self._addIfLegal(self.row+1*scale,self.col,capturesForbidden=True):
+                if self.firstMove:
+                    self._addIfLegal(self.row+2*scale,self.col,capturesForbidden=True)
+
+            # Taking moves
+            self._addIfLegal(self.row+1*scale,self.col+1,capturesOnly=True)
+            self._addIfLegal(self.row+1*scale,self.col-1,capturesOnly=True)
 
             # En passant
             adjacentPieces = []
             if self.col != 0:
-                adjacentPieces.append(board.grid[self.row][self.col-1])
+                adjacentPieces.append(board.pieceGrid[self.row][self.col-1])
             if self.col != 7:
-                adjacentPieces.append(board.grid[self.row][self.col+1])
+                adjacentPieces.append(board.pieceGrid[self.row][self.col+1])
 
             for piece in adjacentPieces:
                 if isinstance(piece,Pawn):
                     if piece.justMovedTwo and piece.colour!=self.colour:
-                        behindNum = 1 if self.colour == "White" else -1
                         print(piece.row,piece.col)
-                        self.moves.append((piece.row+behindNum,piece.col))
+                        self.moves.append((piece.row+1*scale,piece.col))
 
         return self.moves
+    
+class Square():
+    def __init__(self,surface:pygame.Surface,row,column,colour):
+        self.surface = surface
+        self.scaledRect = pygame.Rect(0,0,0,0)
+        self.row = row
+        self.col = column
+        self.colour = colour
+    
+    def __repr__(self):
+        return "The square with row index " + str(self.row) + " and column index " + str(self.col)
 
 class GameBoard():
     def __init__(self):
-        self.grid = [[],[],[],[],[],[],[],[]]
+        self.pieceGrid = [[],[],[],[],[],[],[],[]]
 
-        for rowIndex in range(len(self.grid)):
+        for rowIndex in range(len(self.pieceGrid)):
             colour = "Black" if rowIndex > 1 else "White"
             if rowIndex in [0,7]:
-                self.grid[rowIndex] = [
+                self.pieceGrid[rowIndex] = [
                     Rook(rowIndex,0,colour),
                     Knight(rowIndex,1,colour),
                     Bishop(rowIndex,2,colour),
@@ -227,12 +269,12 @@ class GameBoard():
                     Rook(rowIndex,7,colour)]
                 
             elif rowIndex in [1,6]:
-                self.grid[rowIndex] = []
+                self.pieceGrid[rowIndex] = []
                 for i in range(8):
-                    self.grid[rowIndex].append(Pawn(rowIndex,i,colour))
+                    self.pieceGrid[rowIndex].append(Pawn(rowIndex,i,colour))
             
             else:
-                self.grid[rowIndex] = [None]*8
+                self.pieceGrid[rowIndex] = [None]*8
 
         self._createBoard()
     def __repr__(self):
@@ -240,41 +282,65 @@ class GameBoard():
         # string representation of the board is for debugging purposes only.
         # To view the board properly the GUI should be used.
         stringRepresentation = ""
-        for row in self.grid:
+        for row in self.pieceGrid:
             stringRepresentation += str(row) + "\n"
         
         return stringRepresentation
     
     def _createBoard(self):
         self.surface = pygame.Surface((400,400))
-        self.background = pygame.Surface((400,400))
+        self.squareGrid = []
+
         currentColour ="#D7BA89"
         for row in range(8):
+            squaresRow = []
             for column in range(8):
-                self.background.fill(currentColour,(column*50,row*50,50,50))
+                square = Square(self.surface.subsurface(column*50,row*50,50,50),row,column,currentColour)
+                square.surface.fill(currentColour)
+
+                scale = gameScreen.get_width()/self.surface.get_width()
+                size = 50*scale
+                square.scaledRect = pygame.Rect(column*size,row*size,size,size)
+
+
+                squaresRow.append(square)
+
                 currentColour = "#D7BA89" if currentColour == "#56342A" else "#56342A"
             currentColour = "#D7BA89" if currentColour == "#56342A" else "#56342A"
 
-        self.surface.blit(self.background,(0,0))
+            self.squareGrid.append(squaresRow)
+
+        for row in self.squareGrid:
+            self._update(row)
     
-    def update(self):
-        self.surface.blit(self.background,(0,0))
-        for row in range(8):
-            for column in range(8):
-                if self.grid[row][column] != None:
-                    piece = self.grid[row][column]
-                    self.surface.blit(piece.image,(column*50,row*50,50,50))
-        
+    def _update(self,changedSquares:list):
+        #self.surface.blit(self.background,(0,0))
+        for square in changedSquares:
+            row = square.row
+            column = square.col
+            square.surface.fill(square.colour)
+
+            if self.pieceGrid[row][column] != None:
+                piece = self.pieceGrid[row][column]
+                square.surface.blit(piece.image,square.surface.get_rect())
+
         pygame.transform.scale(self.surface,gameScreen.get_size(),gameScreen)
 
-board = GameBoard()
+    def getSquarePressed(self,x,y):
+        for row in self.squareGrid:
+            for square in row:
+                if square.scaledRect.collidepoint(x,y):
+                    return square
+                
+        return None
 
-def main(screenWidth=1000,screenHeight=1000):
-    global gameScreen
+def main(screenSize=min(pygame.display.get_desktop_sizes()[0][0]-100,pygame.display.get_desktop_sizes()[0][1]-100)):
+    global gameScreen,board
     #screen must be a square for chess 
-    #temp
-    gameScreen = pygame.display.set_mode((screenWidth,screenHeight))
-    board.update()
+    gameScreen = pygame.display.set_mode((screenSize,screenSize))
+
+    board = GameBoard()
+    #board.update()
 
     running = True
     while running:
@@ -283,12 +349,23 @@ def main(screenWidth=1000,screenHeight=1000):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            
-            elif event.type == pygame.KEYDOWN:
-                print(board.grid[1][0].getMoves())
-                print(board.grid[1][0].move(2,0))
-                board.update()
-        
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                square = board.getSquarePressed(x,y)
+                piece = board.pieceGrid[square.row][square.col]
+                if piece != None:
+                    moves = piece.getMoves()
+                    # Func1:
+                        # display circles on board showing possible moves
+                    # Func:
+                        # if next click is on valid square, move piece there
+                        # else if next click on different piece - swap to that piece Func1()
+                        # else - do nothing
+                    print(moves)
+
+                    # Temp first possible move
+                    piece.move(*moves[0])
+
+                
         pygame.display.update()
         clock.tick(20)
 
@@ -297,10 +374,10 @@ def main(screenWidth=1000,screenHeight=1000):
 if __name__ == "__main__":
     main()
 
-# Castling currently unconsidered
+# Castling, promoting, check and checkmate currently unconsidered
 
-# Make all games seperate repositories 
-# Game launcher isn't very difficult (just calls main on each file with possible inputs), dont need as a project
+# Could make screens not require square sizing and pad out extra space with solid colour?
+# Might look bad and be better to just force square sizing and non-resizable windows
 
 
 # Also want to try to make opponent - either learn how to make a chess ai (preferred as more impressive) 
@@ -308,6 +385,3 @@ if __name__ == "__main__":
 # Or both??
 
 #Make AI in a seperate file in same repository
-
-# Pieces were offered for free under https://creativecommons.org/publicdomain/zero/1.0/ at https://rhosgfx.itch.io/vector-chess-pieces
-# No attribution required but thought i should anyway
