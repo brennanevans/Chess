@@ -10,6 +10,10 @@ class Pieces():
     whitePieces = []
     whiteKing = None
 
+    ignoringCheck = False
+
+    currentPiece = None
+
     def __init__(self,square,colour:str):
         self.row = square.row
         self.col = square.col
@@ -23,11 +27,11 @@ class Pieces():
         # Moves that their pieces can make only change then and can be recalculated on their turn
         # This reduces need for recalculation each time a piece is pressed
         self.moves = []
+        self.movementSpeeds = [0,0,0]#Horizontal,Vertical,Diagonal
 
         imagePath = "Assets/" + self.colour + "Pieces/" + str(type(self).__name__) + self.colour + ".png"
         self.image = pygame.image.load(imagePath)
         self.image = pygame.transform.smoothscale(self.image,(50,50))
-
 
         if self.colour == "White":
             Pieces.whitePieces.append(self)
@@ -44,7 +48,7 @@ class Pieces():
     def _updateNotation(self):
         _cols = ["A","B","C","D","E","F","G","H"]
         self.notation = _cols[self.col] + str(self.row+1)
-    
+
     def _addIfLegal(self,row,col,capturesOnly=False,capturesForbidden=False):
         if row<0 or row>7 or col<0 or col>7:
             return False
@@ -54,18 +58,34 @@ class Pieces():
         
         if self.colour == "Black":
             currentKing = Pieces.blackKing
+            oppositionPieces = Pieces.whitePieces
         else:
             currentKing = Pieces.whiteKing
+            oppositionPieces = Pieces.blackPieces
 
         # # Test if moving piece will create/not alleviate check
-        # self.square.piece = None
-        # destination.piece = self
-        # if currentKing._calculateInCheck():
-        #     self.square.piece = self
-        #     destination.piece = destinationPiece
-        #     return False
-        # self.square.piece = self
-        # destination.piece = destinationPiece
+        if not Pieces.ignoringCheck:
+            self.square.piece = None
+            destination.piece = self
+            if destinationPiece != None and destinationPiece.colour != self.colour:
+                oppositionPieces.remove(destinationPiece)
+
+            if isinstance(self,King):
+                temporaryLocation = destination
+            else:
+                temporaryLocation = currentKing.square
+
+            if currentKing._calculateInCheck(temporaryLocation):
+                self.square.piece = self
+                destination.piece = destinationPiece
+                if destinationPiece != None and destinationPiece.colour != self.colour:
+                    oppositionPieces.append(destinationPiece)
+                return False
+            
+            self.square.piece = self
+            destination.piece = destinationPiece
+            if destinationPiece != None and destinationPiece.colour != self.colour:
+                oppositionPieces.append(destinationPiece)
 
         if destinationPiece != None:
             if destinationPiece.colour != self.colour:
@@ -145,133 +165,18 @@ class Pieces():
             row+=1
             column+=1
 
-    def move(self,square):
-        global board
-        board.currentPiece = None
-
-        if square in self.moves:
-            if isinstance(self,Pawn):
-                self.firstMove = False
-                if abs(self.row-square.row) == 2:
-                    self.justMovedTwo = True
-                else:
-                    self.justMovedTwo = False
-            
-            board.squareGrid[self.row][self.col].piece = None
-            board._update()
-
-            square.piece = self
-            self.row = square.row
-            self.col = square.col
-            board._update()
-
-            self._updateNotation()
-            
-
-            for row in board.squareGrid:
-                for square in row:
-                    if square.piece != None:
-                        square.piece.moves = []
-
-            return True
-        else:
-            return False
-
-    def remove(self):
-        if self.colour == "White":
-            Pieces.whitePieces.remove(self)
-        else:
-            Pieces.blackPieces.remove(self)
-
-class King(Pieces):
-    def __init__(self,square,colour:str):
-        super().__init__(square, colour)
-        self.inCheck = False
-
     def getMoves(self):
-        if self.moves == []:
-            self._getHorizontalMoves(1)
-            self._getVerticalMoves(1)
-            self._getDiagonalMoves(1)
+        if self.moves != []:
+            return self.moves
 
-        return self.moves
-    
-    def _calculateInCheck(self):
-        if self.colour == "White":
-            opponentPieces = Pieces.blackPieces
-        else:
-            opponentPieces = Pieces.whitePieces
-
-        for piece in opponentPieces:
-            if self.square in piece.getMoves(False):
-                self.inCheck = True
-                return True
-            
-        self.inCheck = False
-        return False
-
-class Queen(Pieces):
-    def __init__(self,square,colour:str):
-        super().__init__(square, colour)
-    
-    def getMoves(self):
-        if self.moves == []:
-            self._getHorizontalMoves()
-            self._getVerticalMoves()
-            self._getDiagonalMoves()
-
-        return self.moves
-
-class Rook(Pieces):
-    def __init__(self,square,colour:str):
-        super().__init__(square, colour)
-
-    def getMoves(self):
-        if self.moves == []:
-            self._getHorizontalMoves()
-            self._getVerticalMoves()
-
-        return self.moves
-        
-
-class Bishop(Pieces):
-    def __init__(self,square,colour:str):
-        super().__init__(square, colour)
-    
-    def getMoves(self):
-        if self.moves == []:
-            self._getDiagonalMoves()
-        
-        return self.moves
-
-class Knight(Pieces):
-    def __init__(self,square,colour:str):
-        super().__init__(square, colour)
-
-    def getMoves(self):
-        if self.moves == []:
+        if isinstance(self,Knight):
             possibleOffsets = [(1,-2),(1,2),(-1,-2),(-1,2),(2,-1),(2,1),(-2,-1),(-2,1)]
-
             for offsets in possibleOffsets:
                 self._addIfLegal(self.row+offsets[0],self.col+offsets[1])
-
-        return self.moves
-
-class Pawn(Pieces):
-    def __init__(self,square,colour:str):
-        super().__init__(square, colour)
-        self.firstMove = True
-        self.justMovedTwo = False
-
-    def getMoves(self):
-        if self.moves == []:
-            # Decided to bypass vertical and horizonal move functions for pawns as they move so differently to other pieces
-
+                
+        elif isinstance(self,Pawn):
             # Black pawns move down board so row indexes decrease rather than increase
-            if self.colour == "Black":
-                scale = -1
-            else:
-                scale = 1
+            scale = -1 if self.colour == "Black" else 1
 
             #Vertical moves - can only possibly move two if can move one
             if self._addIfLegal(self.row+1*scale,self.col,capturesForbidden=True):
@@ -291,12 +196,116 @@ class Pawn(Pieces):
 
             for piece in adjacentPieces:
                 if isinstance(piece,Pawn):
-                    if piece.justMovedTwo and piece.colour!=self.colour:
-                        print(piece.row,piece.col)
-                        self.moves.append(board.squareGrid[piece.row+1*scale][piece.col])
+                    if piece.twoMoveTurn == turn-1 and piece.colour!=self.colour:
+                        self._addIfLegal(piece.row+(1*scale),piece.col)
+
+        else:
+            self._getHorizontalMoves(self.movementSpeeds[0])
+            self._getVerticalMoves(self.movementSpeeds[1])
+            self._getDiagonalMoves(self.movementSpeeds[2])
 
         return self.moves
-    
+
+    def move(self,square):
+        global turn
+        Pieces.currentPiece = None
+
+        # TODO remove piece when doing en Passant
+
+        if square in self.moves:
+            if isinstance(self,Pawn):
+                self.firstMove = False
+                if abs(self.row-square.row) == 2:
+                    self.twoMoveTurn = turn
+                else:
+                    self.justMovedTwo = None
+            
+            self.square.piece = None
+            board._update()
+
+            square.piece = self
+            self.square = square
+            self.row = square.row
+            self.col = square.col
+            board._update()
+
+            self._updateNotation()
+
+            for row in board.squareGrid:
+                for square in row:
+                    if square.piece != None:
+                        square.piece.moves = []
+
+            turn +=1
+
+            return True
+        else:
+            return False
+
+    def remove(self):
+        if self.colour == "White":
+            Pieces.whitePieces.remove(self)
+        else:
+            Pieces.blackPieces.remove(self)
+
+class King(Pieces):
+    def __init__(self,square,colour:str):
+        super().__init__(square, colour)
+        self.inCheck = False
+        self.movementSpeeds = [1,1,1]
+
+    def _calculateInCheck(self,temporaryLocation = None):
+        if temporaryLocation == None:
+            location = self.square
+        else:
+            location = temporaryLocation
+
+        if self.colour == "White":
+            opponentPieces = Pieces.blackPieces
+        else:
+            opponentPieces = Pieces.whitePieces
+
+        for piece in opponentPieces:
+            Pieces.ignoringCheck = True
+            moves = piece.getMoves()
+            if moves == []:
+                continue
+            piece.moves = []
+
+            if location in moves:
+                self.inCheck = True
+                Pieces.ignoringCheck = False
+                return True
+                
+        Pieces.ignoringCheck = False
+        self.inCheck = False
+        return False
+
+class Queen(Pieces):
+    def __init__(self,square,colour:str):
+        super().__init__(square, colour)
+        self.movementSpeeds = [7,7,7]
+
+class Rook(Pieces):
+    def __init__(self,square,colour:str):
+        super().__init__(square, colour)
+        self.movementSpeeds= [7,7,0]
+
+class Bishop(Pieces):
+    def __init__(self,square,colour:str):
+        super().__init__(square, colour)
+        self.movementSpeeds = [0,0,7]
+
+class Knight(Pieces):
+    def __init__(self,square,colour:str):
+        super().__init__(square, colour)
+
+class Pawn(Pieces):
+    def __init__(self,square,colour:str):
+        super().__init__(square, colour)
+        self.firstMove = True
+        self.twoMoveTurn = None
+
 class Square():
     def __init__(self,surface:pygame.Surface,row,column,colour):
         self.surface = surface
@@ -314,11 +323,9 @@ class Square():
     
     def __repr__(self):
         return "The square with row index " + str(self.row) + " and column index " + str(self.col)
-        
 
 class GameBoard():
     def __init__(self):
-        self.currentPiece = None
         self._createBoard()
 
     # def __repr__(self):
@@ -378,8 +385,8 @@ class GameBoard():
                 if square.piece != None:
                     square.surface.blit(square.piece.image,square.surface.get_rect())
 
-        if self.currentPiece != None:
-            for square in self.currentPiece.moves:            
+        if Pieces.currentPiece != None:
+            for square in Pieces.currentPiece.moves:            
                 pygame.draw.circle(square.surface,"Grey",square.surface.get_rect().center,10)
 
         pygame.transform.scale(self.surface,gameScreen.get_size(),gameScreen)
@@ -393,11 +400,12 @@ class GameBoard():
         return None
 
 def main(screenSize=min(pygame.display.get_desktop_sizes()[0][0]-100,pygame.display.get_desktop_sizes()[0][1]-100)):
-    global gameScreen,board,playerColour
+    global gameScreen,board,playerColour,turn
     #screen must be a square for chess 
     gameScreen = pygame.display.set_mode((screenSize,screenSize))
     board = GameBoard()
     playerColour = "White"
+    turn = 1
 
     running = True
     while running:
@@ -411,12 +419,12 @@ def main(screenSize=min(pygame.display.get_desktop_sizes()[0][0]-100,pygame.disp
                 if square == None:
                     break
                 
-                if board.currentPiece != None and square in board.currentPiece.moves:
-                    board.currentPiece.move(square)
+                if Pieces.currentPiece != None and square in Pieces.currentPiece.moves:
+                    Pieces.currentPiece.move(square)
                     playerColour = "Black" if playerColour == "White" else "White"
                 elif square.piece != None and square.piece.colour == playerColour:
                     square.piece.getMoves()
-                    board.currentPiece = square.piece
+                    Pieces.currentPiece = square.piece
 
                     board._update()      
                 
@@ -428,7 +436,11 @@ def main(screenSize=min(pygame.display.get_desktop_sizes()[0][0]-100,pygame.disp
 if __name__ == "__main__":
     main()
 
-# Castling, promoting, check and checkmate currently unconsidered
+# Checkmate = check moves of all current players pieces. If all moves = [], checkmate
+
+
+
+# Castling, promoting and checkmate currently unconsidered
 
 # Could make screens not require square sizing and pad out extra space with solid colour?
 # Might look bad and be better to just force square sizing and non-resizable windows
