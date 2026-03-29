@@ -5,9 +5,16 @@ pygame.font.init()
 clock = pygame.time.Clock()
 
 class Pieces():
-    def __init__(self,row:int,col:int,colour:str):
-        self.row = row
-        self.col = col
+    blackPieces = []
+    blackKing = None
+    whitePieces = []
+    whiteKing = None
+
+    def __init__(self,square,colour:str):
+        self.row = square.row
+        self.col = square.col
+        self.square = square
+
         self.colour = colour
         
         self._updateNotation()
@@ -20,6 +27,16 @@ class Pieces():
         imagePath = "Assets/" + self.colour + "Pieces/" + str(type(self).__name__) + self.colour + ".png"
         self.image = pygame.image.load(imagePath)
         self.image = pygame.transform.smoothscale(self.image,(50,50))
+
+
+        if self.colour == "White":
+            Pieces.whitePieces.append(self)
+            if isinstance(self, King):
+                Pieces.whiteKing = self
+        else:
+            Pieces.blackPieces.append(self)
+            if isinstance(self, King):
+                Pieces.blackKing = self
     
     def __repr__(self):
         return str(type(self).__name__) + ":" + self.notation
@@ -31,16 +48,34 @@ class Pieces():
     def _addIfLegal(self,row,col,capturesOnly=False,capturesForbidden=False):
         if row<0 or row>7 or col<0 or col>7:
             return False
-        destinationPiece = board.squareGrid[row][col].piece
+        
+        destination = board.squareGrid[row][col]
+        destinationPiece = destination.piece
+        
+        if self.colour == "Black":
+            currentKing = Pieces.blackKing
+        else:
+            currentKing = Pieces.whiteKing
+
+        # # Test if moving piece will create/not alleviate check
+        # self.square.piece = None
+        # destination.piece = self
+        # if currentKing._calculateInCheck():
+        #     self.square.piece = self
+        #     destination.piece = destinationPiece
+        #     return False
+        # self.square.piece = self
+        # destination.piece = destinationPiece
+
         if destinationPiece != None:
             if destinationPiece.colour != self.colour:
                 if not capturesForbidden:
-                    self.moves.append(board.squareGrid[row][col])
+                    self.moves.append(destination)
             return False
         else:
             if capturesOnly:
                 return False
-            self.moves.append(board.squareGrid[row][col])
+            self.moves.append(destination)
             return True
     
     def _getHorizontalMoves(self,maxMovement=7):
@@ -142,10 +177,15 @@ class Pieces():
         else:
             return False
 
+    def remove(self):
+        if self.colour == "White":
+            Pieces.whitePieces.remove(self)
+        else:
+            Pieces.blackPieces.remove(self)
 
 class King(Pieces):
-    def __init__(self,row:int,col:int,colour:str):
-        super().__init__(row, col, colour)
+    def __init__(self,square,colour:str):
+        super().__init__(square, colour)
         self.inCheck = False
 
     def getMoves(self):
@@ -155,10 +195,24 @@ class King(Pieces):
             self._getDiagonalMoves(1)
 
         return self.moves
+    
+    def _calculateInCheck(self):
+        if self.colour == "White":
+            opponentPieces = Pieces.blackPieces
+        else:
+            opponentPieces = Pieces.whitePieces
+
+        for piece in opponentPieces:
+            if self.square in piece.getMoves(False):
+                self.inCheck = True
+                return True
+            
+        self.inCheck = False
+        return False
 
 class Queen(Pieces):
-    def __init__(self,row:int,col:int,colour:str):
-        super().__init__(row, col, colour)
+    def __init__(self,square,colour:str):
+        super().__init__(square, colour)
     
     def getMoves(self):
         if self.moves == []:
@@ -169,8 +223,8 @@ class Queen(Pieces):
         return self.moves
 
 class Rook(Pieces):
-    def __init__(self,row:int,col:int,colour:str):
-        super().__init__(row, col, colour)
+    def __init__(self,square,colour:str):
+        super().__init__(square, colour)
 
     def getMoves(self):
         if self.moves == []:
@@ -181,8 +235,8 @@ class Rook(Pieces):
         
 
 class Bishop(Pieces):
-    def __init__(self,row:int,col:int,colour:str):
-        super().__init__(row, col, colour)
+    def __init__(self,square,colour:str):
+        super().__init__(square, colour)
     
     def getMoves(self):
         if self.moves == []:
@@ -191,12 +245,12 @@ class Bishop(Pieces):
         return self.moves
 
 class Knight(Pieces):
-    def __init__(self,row:int,col:int,colour:str):
-        super().__init__(row, col, colour)
+    def __init__(self,square,colour:str):
+        super().__init__(square, colour)
 
     def getMoves(self):
         if self.moves == []:
-            possibleOffsets = [(1,2),(2,1),(2,-1),(1,-2),(-1,-2),(-2,-1),(-2,1)]
+            possibleOffsets = [(1,-2),(1,2),(-1,-2),(-1,2),(2,-1),(2,1),(-2,-1),(-2,1)]
 
             for offsets in possibleOffsets:
                 self._addIfLegal(self.row+offsets[0],self.col+offsets[1])
@@ -204,8 +258,8 @@ class Knight(Pieces):
         return self.moves
 
 class Pawn(Pieces):
-    def __init__(self,row:int,col:int,colour:str):
-        super().__init__(row, col, colour)
+    def __init__(self,square,colour:str):
+        super().__init__(square, colour)
         self.firstMove = True
         self.justMovedTwo = False
 
@@ -306,14 +360,15 @@ class GameBoard():
     def _addPieces(self):
         grid = self.squareGrid
         rows = [grid[0],grid[1],grid[6],grid[7]]
-        pieceRow = [Rook,Knight,Bishop,Queen,King,Bishop,Knight,Rook]
+        pieceRow = [Rook,Knight,Bishop,King,Queen,Bishop,Knight,Rook]
+
         for row in rows:
             for square in row:
                 colour = "Black" if square.row > 1 else "White"
                 if square.row in [0,7]:
-                    square.piece = pieceRow[square.col](square.row,square.col,colour)
+                    square.piece = pieceRow[square.col](square,colour)
                 else:
-                    square.piece = Pawn(square.row,square.col,colour)
+                    square.piece = Pawn(square,colour)
     
     def _update(self):
         for row in self.squareGrid:
