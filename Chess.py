@@ -207,7 +207,6 @@ class Pieces():
         return self.moves
 
     def move(self,square):
-        global turn
         Pieces.currentPiece = None
 
         # TODO remove piece when doing en Passant
@@ -230,18 +229,12 @@ class Pieces():
             board._update()
 
             self._updateNotation()
-
-            for row in board.squareGrid:
-                for square in row:
-                    if square.piece != None:
-                        square.piece.moves = []
-
-            turn +=1
+            board.updateTurn()
 
             return True
         else:
             return False
-
+    
     def remove(self):
         if self.colour == "White":
             Pieces.whitePieces.remove(self)
@@ -280,6 +273,26 @@ class King(Pieces):
         Pieces.ignoringCheck = False
         self.inCheck = False
         return False
+
+    def _inCheckmateOrStalemate(self):
+        if self.colour == "White":
+            selfPieces = Pieces.whitePieces
+        else:
+            selfPieces = Pieces.blackPieces
+
+        possibleMoves = []
+        for piece in selfPieces:
+            moves = piece.getMoves()
+            if moves != None:
+                possibleMoves.extend(moves)
+
+        if possibleMoves == []:
+            if self._calculateInCheck():
+                return "Checkmate"
+            else:
+                return "Stalemate"
+
+        return None
 
 class Queen(Pieces):
     def __init__(self,square,colour:str):
@@ -391,6 +404,27 @@ class GameBoard():
 
         pygame.transform.scale(self.surface,gameScreen.get_size(),gameScreen)
 
+    def updateTurn(self):
+        global turn 
+        turn += 1
+
+        if playerColour == "White":
+            selfPieces = Pieces.whitePieces
+            opponentKing = Pieces.blackKing
+        else:
+            selfPieces = Pieces.blackPieces
+            opponentKing = Pieces.whiteKing
+
+        for piece in selfPieces:
+            piece.moves = []
+
+        status = opponentKing._inCheckmateOrStalemate()
+        if status == "Checkmate":
+            print(playerColour + " wins!!!")
+        elif status == "Stalemate":
+            print("Stalemate.")
+
+
     def getSquarePressed(self,x,y):
         for row in self.squareGrid:
             for square in row:
@@ -435,12 +469,15 @@ def main(screenSize=min(pygame.display.get_desktop_sizes()[0][0]-100,pygame.disp
 
 if __name__ == "__main__":
     main()
+    
+# Currently when pieces are taken they dont actually get removed properly
 
-# Checkmate = check moves of all current players pieces. If all moves = [], checkmate
+# Code needs massive cleanup and refactoring
+
+# Castling and promoting
 
 
 
-# Castling, promoting and checkmate currently unconsidered
 
 # Could make screens not require square sizing and pad out extra space with solid colour?
 # Might look bad and be better to just force square sizing and non-resizable windows
