@@ -1,328 +1,448 @@
 import pygame
-
 pygame.init()
-pygame.font.init()
 clock = pygame.time.Clock()
 
-class Pieces():
+class Pieces:
     blackPieces = []
-    blackKing = None
     whitePieces = []
-    whiteKing = None
+    currentColour = "White"
+    selectedPiece = None
 
-    ignoringCheck = False
-
-    currentPiece = None
-
-    def __init__(self,square,colour:str):
-        self.row = square.row
-        self.col = square.col
+    def __init__(self,name,square,colour):
+        self.name = name
         self.square = square
-
         self.colour = colour
-        
-        self._updateNotation()
-
-        # Reset self.moves to [] for every piece on one team when they make their move
-        # Moves that their pieces can make only change then and can be recalculated on their turn
-        # This reduces need for recalculation each time a piece is pressed
         self.moves = []
-        self.movementSpeeds = [0,0,0]#Horizontal,Vertical,Diagonal
+        
+        # self.movements = [hor,ver,diag]
+        match name:
+            case "King":
+                self.movements = [1,1,1]
+                self.hasMoved = False
+            case "Pawn":
+                # ver reduces to 1 after 1 move
+                self.movements = [0,2,1]
+                self.twoTurn = -10
+            case "Knight":
+                self.movements = [0,0,0]    
+            case "Bishop":
+                self.movements = [0,0,7]
+            case "Rook":
+                self.movements = [7,7,0]
+                self.hasMoved = False
+            case "Queen":
+                self.movements = [7,7,7]
+            case _:
+                raise ValueError("Invalid Name for Piece Object")
 
-        imagePath = "Assets/" + self.colour + "Pieces/" + str(type(self).__name__) + self.colour + ".png"
-        self.image = pygame.image.load(imagePath)
-        self.image = pygame.transform.smoothscale(self.image,(50,50))
-
+        self._createImage()
         if self.colour == "White":
             Pieces.whitePieces.append(self)
-            if isinstance(self, King):
+            if self.name == "King":
                 Pieces.whiteKing = self
         else:
             Pieces.blackPieces.append(self)
-            if isinstance(self, King):
+            if self.name == "King":
                 Pieces.blackKing = self
+
+    @property
+    def row(self):
+        return self.square.row
+
+    @property
+    def col(self):
+        return self.square.col
+    
+    def _createImage(self):
+        imagePath = "Assets/" + self.colour + "Pieces/" + self.name + self.colour + ".png"
+        self.image = pygame.image.load(imagePath)
+        self.image = pygame.transform.smoothscale(self.image,(50,50))
     
     def __repr__(self):
-        return str(type(self).__name__) + ":" + self.notation
-    
-    def _updateNotation(self):
-        _cols = ["A","B","C","D","E","F","G","H"]
-        self.notation = _cols[self.col] + str(self.row+1)
-
-    def _addIfLegal(self,row,col,capturesOnly=False,capturesForbidden=False):
-        if row<0 or row>7 or col<0 or col>7:
-            return False
+        return self.name + ":" + self._getNotation()
         
-        destination = board.squareGrid[row][col]
-        destinationPiece = destination.piece
-        
-        if self.colour == "Black":
-            currentKing = Pieces.blackKing
-            oppositionPieces = Pieces.whitePieces
-        else:
-            currentKing = Pieces.whiteKing
-            oppositionPieces = Pieces.blackPieces
+    def _getNotation(self):
+        cols = ["A","B","C","D","E","F","G","H"]
+        return cols[self.col] + str(self.row+1)
 
-        # # Test if moving piece will create/not alleviate check
-        if not Pieces.ignoringCheck:
-            self.square.piece = None
-            destination.piece = self
-            if destinationPiece != None and destinationPiece.colour != self.colour:
-                oppositionPieces.remove(destinationPiece)
 
-            if isinstance(self,King):
-                temporaryLocation = destination
+    def _getHorizontalMoves(self):
+        moves = []
+
+        # -1 and +1 as range has exclusive stop
+        maxHorizontal = min(7,self.col+self.movements[0])+1
+        minHorizontal = max(0,self.col-self.movements[0])-1
+
+        #Check larger Column values - right from perspective of Black
+        for colNum in range(self.col+1, maxHorizontal):
+            square = board.grid[self.row][colNum]
+
+            if square.piece == None:
+                moves.append(square)
+            elif square.piece.colour != self.colour:
+                moves.append(square)
+                break
             else:
-                temporaryLocation = currentKing.square
+                break
+        
+        #Check smaller Column values
+        for colNum in range(self.col-1, minHorizontal,-1):
+            square = board.grid[self.row][colNum]
 
-            if currentKing._calculateInCheck(temporaryLocation):
-                self.square.piece = self
-                destination.piece = destinationPiece
-                if destinationPiece != None and destinationPiece.colour != self.colour:
-                    oppositionPieces.append(destinationPiece)
-                return False
-            
+            if square.piece == None:
+                moves.append(square)
+            elif square.piece.colour != self.colour:
+                moves.append(square)
+                break
+            else:
+                break
+
+        return moves
+
+    def _getVerticalMoves(self):
+        moves = []
+
+        # -1 and +1 as range has exclusive stop
+        minVertical = max(0,self.row-self.movements[1])-1
+        maxVertical = min(7,self.row+self.movements[1])+1
+
+        # Dissallows pawns from moving backwards
+        if self.name == "Pawn" and self.colour == "White":
+            minVertical = self.row
+        elif self.name == "Pawn" and self.colour == "Black":
+            maxVertical = self.row
+
+        #Check larger Row values - down from perspective of Black
+        for rowNum in range(self.row+1, maxVertical):
+            square = board.grid[rowNum][self.col]
+
+            if square.piece == None:
+                moves.append(square)
+            elif square.piece.colour != self.colour and self.name != "Pawn":
+                moves.append(square)
+                break
+            else:
+                break
+        
+        #Check smaller Row values
+        for rowNum in range(self.row-1, minVertical, -1):
+            square = board.grid[rowNum][self.col]
+
+            if square.piece == None:
+                moves.append(square)
+            elif square.piece.colour != self.colour and self.name != "Pawn":
+                moves.append(square)
+                break
+            else:
+                break
+
+        return moves
+
+    def _getDiagonalMoves(self):
+        moves = []
+        
+        minHorizontal = max(0,self.col-self.movements[2])
+        maxHorizontal = min(7,self.col+self.movements[2])
+        minVertical = max(0,self.row-self.movements[2])
+        maxVertical = min(7,self.row+self.movements[2])
+
+        # Dissallows pawns from moving backwards
+        if self.name == "Pawn" and self.colour == "White":
+            minVertical = self.row
+        elif self.name == "Pawn" and self.colour == "Black":
+            maxVertical = self.row
+        
+        # "Down Left" means down left from perspective of Black pieces
+
+        # "Up Left"
+        rowNum = self.row-1
+        colNum = self.col-1
+        while rowNum>=minVertical and colNum>=minHorizontal:
+            square = board.grid[rowNum][colNum]
+
+            if square.piece == None and self.name != "Pawn":
+                moves.append(square)
+            elif square.piece != None and square.piece.colour != self.colour:
+                moves.append(square)
+                break
+            else:
+                break
+
+            rowNum-=1
+            colNum-=1
+
+        # "Up Right"
+        rowNum = self.row-1
+        colNum = self.col+1
+
+        while rowNum>=minVertical and colNum<=maxHorizontal:
+            square = board.grid[rowNum][colNum]
+
+            if square.piece == None and self.name != "Pawn":
+                moves.append(square)
+            elif square.piece != None and square.piece.colour != self.colour:
+                moves.append(square)
+                break
+            else:
+                break
+
+            rowNum-=1
+            colNum+=1
+
+        # "Down Left"
+        rowNum = self.row+1
+        colNum = self.col-1
+        while rowNum<=maxVertical and colNum>=minHorizontal: 
+            square = board.grid[rowNum][colNum]
+
+            if square.piece == None and self.name != "Pawn":
+                moves.append(square)
+            elif square.piece != None and square.piece.colour != self.colour:
+                moves.append(square)
+                break
+            else:
+                break
+
+            rowNum+=1
+            colNum-=1
+
+        # "Down Right"
+        rowNum = self.row+1
+        colNum = self.col+1
+        while rowNum<=maxVertical and colNum<=maxHorizontal:
+            square = board.grid[rowNum][colNum]
+
+            if square.piece == None and self.name != "Pawn":
+                moves.append(square)
+            elif square.piece != None and square.piece.colour != self.colour:
+                moves.append(square)
+                break
+            else:
+                break
+
+            rowNum+=1
+            colNum+=1
+
+        return moves
+
+    def _getKnightMoves(self):
+        moves = []
+        possibleOffsets = [(1,-2),(1,2),(-1,-2),(-1,2),(2,-1),(2,1),(-2,-1),(-2,1)]
+        for offset in possibleOffsets:
+            row = self.row + offset[0]
+            col = self.col + offset[1]
+
+            if -1 < row < 8 and -1 < col < 8:
+                if board.grid[row][col].piece == None or board.grid[row][col].piece.colour != self.colour:
+                    moves.append(board.grid[row][col])
+
+        return moves
+
+    def _getEnPassantMoves(self):
+        global turn
+        moves = []
+
+        adjacentSquares = []
+        if self.col+1 < 8:
+            adjacentSquares.append(board.grid[self.row][self.col+1])
+        
+        if self.col -1 > -1:
+            adjacentSquares.append(board.grid[self.row][self.col-1])
+
+        value = 1 if self.colour == "White" else -1
+
+        for square in adjacentSquares:
+            if square.piece == None:
+                continue
+            elif square.piece.name != "Pawn" or square.piece.colour == self.colour:
+                continue
+            elif square.piece.twoTurn == turn-1:
+                destinationSquare = board.grid[square.row+value][square.col]
+                moves.append(destinationSquare)
+
+        return moves
+
+    def _getCastleMoves(self):
+        moves = []
+
+        pieces = Pieces.whitePieces if self.colour == "White" else Pieces.blackPieces
+        opponentPieces = Pieces.whitePieces if self.colour == "Black" else Pieces.blackPieces
+
+        attackedSquares = set()
+        
+        for piece in opponentPieces:
+            moveset = set(piece._getPossibleMoves(ignoreCastle = True)) # ignoring check
+            attackedSquares = attackedSquares.union(moveset)
+
+        if self.hasMoved or self.square in attackedSquares:
+            return []
+
+        for piece in pieces:
+            if piece.name == "Rook" and piece.col == 7:
+                shortRook = piece
+            elif piece.name == "Rook" and piece.col == 0:
+                longRook = piece
+        
+        # Short castle
+        if not shortRook.hasMoved:
+            requiredSquares = [board.grid[self.row][1],board.grid[self.row][2]]
+            if set(requiredSquares).intersection(attackedSquares) == set():
+                if requiredSquares[0].piece == None and requiredSquares[1].piece == None:
+                    moves.append(board.grid[self.row][1])
+
+        # Long castle
+        if not longRook.hasMoved:
+            requiredSquares = [board.grid[self.row][4],board.grid[self.row][5],board.grid[self.row][6]]
+            if set(requiredSquares).intersection(attackedSquares) == set():
+                if requiredSquares[0].piece == None and requiredSquares[1].piece == None and requiredSquares[2].piece == None:
+                    moves.append(board.grid[self.row][5])
+
+        return moves
+
+    def _getPossibleMoves(self,ignoreCastle=False) -> list:
+        possibleMoves = []
+        possibleMoves.extend(self._getHorizontalMoves())
+        possibleMoves.extend(self._getVerticalMoves())
+        possibleMoves.extend(self._getDiagonalMoves())
+
+        if self.name == "Knight":
+            possibleMoves.extend(self._getKnightMoves())
+        elif self.name == "Pawn":
+            possibleMoves.extend(self._getEnPassantMoves())
+        elif self.name == "King" and not ignoreCastle:
+            possibleMoves.extend(self._getCastleMoves())
+        
+        return possibleMoves
+
+    def _noCheckMoves(self,possibleMoves):
+        validMoves = []
+
+        # Test if own king in check if move is taken
+        currentKing = Pieces.whiteKing if Pieces.currentColour == "White" else Pieces.blackKing
+        opponentPieces = Pieces.whitePieces if Pieces.currentColour == "Black" else Pieces.blackPieces
+        originalLocation = self.square
+
+        for move in possibleMoves:
+            invalid = False
+            destination = move
+            destinationPiece = None
+            enPassantPiece = None
+
+            # Remove any piece landed on so don't test if this causes check
+            if destination.piece != None:
+                destinationPiece = destination.piece
+                opponentPieces.remove(destinationPiece)
+                destination.piece = None
+
+            elif abs(self.row-destination.row) == 1 and abs(self.col-destination.col) == 1 and self.name == "Pawn":
+                #En passant requires own checking as removes piece in unique way
+                offset = -1 if self.colour == "White" else 1
+                enPassantSquare = board.grid[destination.row+offset][destination.col]
+                enPassantPiece = enPassantSquare.piece
+                opponentPieces.remove(enPassantPiece)
+                enPassantSquare.piece = None
+
+            # Move piece
+            self.square.piece = None
+            self.square = destination
             self.square.piece = self
-            destination.piece = destinationPiece
-            if destinationPiece != None and destinationPiece.colour != self.colour:
-                oppositionPieces.append(destinationPiece)
 
-        if destinationPiece != None:
-            if destinationPiece.colour != self.colour:
-                if not capturesForbidden:
-                    self.moves.append(destination)
-            return False
-        else:
-            if capturesOnly:
-                return False
-            self.moves.append(destination)
-            return True
-    
-    def _getHorizontalMoves(self,maxMovement=7):
-        # -1 and +1s on self.col/self.row are so pieces doesn't see themselves
-        #  as an untakeable piece and break out of the loop
-        minHorizontal = max(-1,self.col-maxMovement)
-        for column in range(self.col-1,minHorizontal-1,-1):
-            if not self._addIfLegal(self.row,column):
-                break
-        
-        maxHorizontal = min(8,self.col+maxMovement)
-        for column in range(self.col+1,maxHorizontal+1):
-            if not self._addIfLegal(self.row,column):
-                break
-    
-    def _getVerticalMoves(self,maxMovement=7):
-        minVertical = max(-1,self.row-maxMovement)
-        for row in range(self.row-1,minVertical-1,-1):
-            if not self._addIfLegal(row,self.col):
-                break
+            # Check if King can be taken by any pieces
+            for piece in opponentPieces:
+                opponentMoves = piece._getPossibleMoves() # ignores check
+                if currentKing.square in opponentMoves:
+                    invalid = True
+                    break
 
-        maxVertical = min(8,self.row+maxMovement)
-        for row in range(self.row+1,maxVertical+1):
-            if not self._addIfLegal(row,self.col):
-                break
+            # Move piece back
+            self.square.piece = None
+            self.square = originalLocation
+            self.square.piece = self
 
-    def _getDiagonalMoves(self,maxMovement=7):
-        # maxMovement=7 for bishop,queen,rook and 1 for King
-        minHorizontal = max(-1,self.col-maxMovement)
-        maxHorizontal = min(8,self.col+maxMovement)
-        minVertical = max(-1,self.row-maxMovement)
-        maxVertical = min(8,self.row+maxMovement)
-        
-        # "Down Left" means row value and column value both decreasing,
-        #  however, depending on the colour of the piece, this may actually
-        #  be calculating Up Right on the board.
+            # Put piece taken back
+            if destinationPiece != None:
+                opponentPieces.append(destinationPiece)
+                destination.piece = destinationPiece
 
-        row = self.row-1
-        column = self.col-1
-        while row>=minVertical and column>=minHorizontal: # "Down Left"
-            if not self._addIfLegal(row,column):
-                break
-            row -=1
-            column-=1
+            elif enPassantPiece != None: # Put enPassanted piece back
+                opponentPieces.append(enPassantPiece)
+                enPassantSquare.piece = enPassantPiece
 
-        row = self.row-1
-        column = self.col+1
-        while row>=minVertical and column<=maxHorizontal: # "Down Right"
-            if not self._addIfLegal(row,column):
-                break
-            row -=1
-            column+=1
+            if not invalid:
+                validMoves.append(move)
 
-        row = self.row+1
-        column = self.col-1
-        while row<=maxVertical and column>=minHorizontal:# "Up Left"
-            if not self._addIfLegal(row,column):
-                break
-            row+=1
-            column-=1
-
-        row = self.row+1
-        column = self.col+1
-        while row<=maxVertical  and column<=maxHorizontal:# "Up Right"
-            if not self._addIfLegal(row,column):
-                break
-            row+=1
-            column+=1
+        return validMoves
 
     def getMoves(self):
-        if self.moves != []:
-            return self.moves
+        possibleMoves = self._getPossibleMoves()
+        validMoves = self._noCheckMoves(possibleMoves)
 
-        if isinstance(self,Knight):
-            possibleOffsets = [(1,-2),(1,2),(-1,-2),(-1,2),(2,-1),(2,1),(-2,-1),(-2,1)]
-            for offsets in possibleOffsets:
-                self._addIfLegal(self.row+offsets[0],self.col+offsets[1])
-                
-        elif isinstance(self,Pawn):
-            # Black pawns move down board so row indexes decrease rather than increase
-            scale = -1 if self.colour == "Black" else 1
+        self.moves = validMoves
+        return validMoves
 
-            #Vertical moves - can only possibly move two if can move one
-            if self._addIfLegal(self.row+1*scale,self.col,capturesForbidden=True):
-                if self.firstMove:
-                    self._addIfLegal(self.row+2*scale,self.col,capturesForbidden=True)
 
-            # Taking moves
-            self._addIfLegal(self.row+1*scale,self.col+1,capturesOnly=True)
-            self._addIfLegal(self.row+1*scale,self.col-1,capturesOnly=True)
-
-            # En passant
-            adjacentPieces = []
-            if self.col != 0:
-                adjacentPieces.append(board.squareGrid[self.row][self.col-1].piece)
-            if self.col != 7:
-                adjacentPieces.append(board.squareGrid[self.row][self.col+1].piece)
-
-            for piece in adjacentPieces:
-                if isinstance(piece,Pawn):
-                    if piece.twoMoveTurn == turn-1 and piece.colour!=self.colour:
-                        self._addIfLegal(piece.row+(1*scale),piece.col)
-
-        else:
-            self._getHorizontalMoves(self.movementSpeeds[0])
-            self._getVerticalMoves(self.movementSpeeds[1])
-            self._getDiagonalMoves(self.movementSpeeds[2])
-
-        return self.moves
-
-    def move(self,square):
-        Pieces.currentPiece = None
-
-        # TODO remove piece when doing en Passant
-
-        if square in self.moves:
-            if isinstance(self,Pawn):
-                self.firstMove = False
-                if abs(self.row-square.row) == 2:
-                    self.twoMoveTurn = turn
-                else:
-                    self.justMovedTwo = None
-            
-            self.square.piece = None
-            board._update()
-
-            square.piece = self
-            self.square = square
-            self.row = square.row
-            self.col = square.col
-            board._update()
-
-            self._updateNotation()
-            board.updateTurn()
-
-            return True
-        else:
+    def moveTo(self,destination):
+        if destination not in self.moves:
             return False
-    
-    def remove(self):
-        if self.colour == "White":
-            Pieces.whitePieces.remove(self)
-        else:
-            Pieces.blackPieces.remove(self)
+        
+        # Set max vertical movement to 1
+        if self.name == "Pawn":
+            self.movements[1] = 1
 
-class King(Pieces):
-    def __init__(self,square,colour:str):
-        super().__init__(square, colour)
-        self.inCheck = False
-        self.movementSpeeds = [1,1,1]
+            if abs(self.row-destination.row) == 2:
+                self.twoTurn = turn
+            
+            #En passant - piece not landed on so can't be removed normally
+            elif abs(self.row-destination.row) == 1 and abs(self.col-destination.col) == 1 and destination.piece == None:
+                if self.colour == "White":
+                    Pieces.blackPieces.remove(board.grid[destination.row-1][destination.col].piece)
+                    board.grid[destination.row-1][destination.col].piece = None
+                else:
+                    Pieces.whitePieces.remove(board.grid[destination.row+1][destination.col].piece)
+                    board.grid[destination.row+1][destination.col].piece = None
 
-    def _calculateInCheck(self,temporaryLocation = None):
-        if temporaryLocation == None:
-            location = self.square
-        else:
-            location = temporaryLocation
-
-        if self.colour == "White":
-            opponentPieces = Pieces.blackPieces
-        else:
-            opponentPieces = Pieces.whitePieces
-
-        for piece in opponentPieces:
-            Pieces.ignoringCheck = True
-            moves = piece.getMoves()
-            if moves == []:
-                continue
-            piece.moves = []
-
-            if location in moves:
-                self.inCheck = True
-                Pieces.ignoringCheck = False
-                return True
+        elif self.name == "Rook":
+            self.hasMoved = True # Used to prevent castling if either piece has already moved
+        
+        elif self.name == "King":
+            self.hasMoved = True
+            # Castled so need to move rook
+            if self.col - destination.col == 2:
+                rook = board.grid[self.row][0].piece
+                board.grid[self.row][0].piece = None
+                board.grid[self.row][2].piece = rook
+                rook.square = board.grid[self.row][2]
+            elif self.col - destination.col == -2:
+                rook = board.grid[self.row][7].piece
+                board.grid[self.row][7].piece = None
+                board.grid[self.row][4].piece = rook
+                rook.square = board.grid[self.row][4]
                 
-        Pieces.ignoringCheck = False
-        self.inCheck = False
-        return False
 
-    def _inCheckmateOrStalemate(self):
-        if self.colour == "White":
-            selfPieces = Pieces.whitePieces
-        else:
-            selfPieces = Pieces.blackPieces
 
-        possibleMoves = []
-        for piece in selfPieces:
-            moves = piece.getMoves()
-            if moves != None:
-                possibleMoves.extend(moves)
-
-        if possibleMoves == []:
-            if self._calculateInCheck():
-                return "Checkmate"
+        # Remove any piece landed on
+        if destination.piece != None:
+            if self.colour == "White":
+                Pieces.blackPieces.remove(destination.piece)
             else:
-                return "Stalemate"
+                Pieces.whitePieces.remove(destination.piece)
+            destination.piece = None
 
-        return None
+        # Move piece
+        self.square.piece = None
+        self.square = destination
+        self.square.piece = self
 
-class Queen(Pieces):
-    def __init__(self,square,colour:str):
-        super().__init__(square, colour)
-        self.movementSpeeds = [7,7,7]
+        Pieces.selectedPiece = None
 
-class Rook(Pieces):
-    def __init__(self,square,colour:str):
-        super().__init__(square, colour)
-        self.movementSpeeds= [7,7,0]
+        board.updateDisplay()
+        updateTurn()
+        return True
 
-class Bishop(Pieces):
-    def __init__(self,square,colour:str):
-        super().__init__(square, colour)
-        self.movementSpeeds = [0,0,7]
 
-class Knight(Pieces):
-    def __init__(self,square,colour:str):
-        super().__init__(square, colour)
-
-class Pawn(Pieces):
-    def __init__(self,square,colour:str):
-        super().__init__(square, colour)
-        self.firstMove = True
-        self.twoMoveTurn = None
-
-class Square():
+class Square:
     def __init__(self,surface:pygame.Surface,row,column,colour):
         self.surface = surface
-        self.colour = colour
         self.scaledRect = pygame.Rect(0,0,0,0)
 
         self.row = row
@@ -331,115 +451,148 @@ class Square():
         _cols = ["A","B","C","D","E","F","G","H"]
         self.notation = _cols[self.col] + str(self.row+1)
 
+        self.colour = colour
+
         self.piece = None
-        self._hasCircle = False
     
     def __repr__(self):
-        return "The square with row index " + str(self.row) + " and column index " + str(self.col)
+        return "Square(" + self.notation + ")"   
 
-class GameBoard():
+
+class GameBoard:
+    SIZE = 8
+    COLOUR1 = "#D7BA89"
+    COLOUR2 = "#56342A"
+
     def __init__(self):
+        self.squareSize = 50
+        self.boardSize = 400
+        self.surface = pygame.Surface((self.boardSize,self.boardSize))
+
+        self.grid = []
+
         self._createBoard()
+        self._addPieces()
+        self.updateDisplay()
 
-    # def __repr__(self):
-    #     # Note, the return string is not fully aligned. This is intended as the
-    #     # string representation of the board is for debugging purposes only.
-    #     # To view the board properly the GUI should be used.
-    #     stringRepresentation = ""
-    #     for row in self.squareGrid:
-    #         stringRepresentation += str(row) + "\n"
-        
-    #     return stringRepresentation
-    
     def _createBoard(self):
-        self.surface = pygame.Surface((400,400))
-        self.squareGrid = []
+        currentColour = GameBoard.COLOUR1
 
-        currentColour ="#D7BA89"
-        for row in range(8):
+        for row in range(GameBoard.SIZE):
             squaresRow = []
-            for column in range(8):
-                square = Square(self.surface.subsurface(column*50,row*50,50,50),row,column,currentColour)
+
+            for column in range(GameBoard.SIZE):
+                x = column * self.squareSize
+                y = row * self.squareSize
+                square = Square(self.surface.subsurface(x,y,self.squareSize,self.squareSize),row,column,currentColour)
                 square.surface.fill(currentColour)
 
-                scale = gameScreen.get_width()/self.surface.get_width()
-                size = 50*scale
-                square.scaledRect = pygame.Rect(column*size,row*size,size,size)
-
+                scaledSize = self.squareSize*gameScreen.get_width()/self.surface.get_width()
+                square.scaledRect = pygame.Rect(column*scaledSize,row*scaledSize,scaledSize,scaledSize)
 
                 squaresRow.append(square)
 
-                currentColour = "#D7BA89" if currentColour == "#56342A" else "#56342A"
-            currentColour = "#D7BA89" if currentColour == "#56342A" else "#56342A"
+                currentColour = GameBoard.COLOUR1 if currentColour == GameBoard.COLOUR2 else GameBoard.COLOUR2
+            currentColour = GameBoard.COLOUR1 if currentColour == GameBoard.COLOUR2 else GameBoard.COLOUR2 # changes at end of row -> checkerboard
 
-            self.squareGrid.append(squaresRow)
-
-        self._addPieces()
-        self._update()
+            self.grid.append(squaresRow)
 
     def _addPieces(self):
-        grid = self.squareGrid
-        rows = [grid[0],grid[1],grid[6],grid[7]]
-        pieceRow = [Rook,Knight,Bishop,King,Queen,Bishop,Knight,Rook]
+        rows = [self.grid[0],self.grid[1],self.grid[6],self.grid[7]]
+        pieceRow = ["Rook","Knight","Bishop","King","Queen","Bishop","Knight","Rook"]
 
         for row in rows:
             for square in row:
                 colour = "Black" if square.row > 1 else "White"
                 if square.row in [0,7]:
-                    square.piece = pieceRow[square.col](square,colour)
+                    square.piece = Pieces(pieceRow[square.col],square,colour)
                 else:
-                    square.piece = Pawn(square,colour)
+                    square.piece = Pieces("Pawn",square,colour)
     
-    def _update(self):
-        for row in self.squareGrid:
+    def updateDisplay(self):
+        for row in self.grid:
             for square in row:
-                square.surface.fill(square.colour)
+                square.surface.fill(square.colour) # clear square
 
                 if square.piece != None:
                     square.surface.blit(square.piece.image,square.surface.get_rect())
 
-        if Pieces.currentPiece != None:
-            for square in Pieces.currentPiece.moves:            
-                pygame.draw.circle(square.surface,"Grey",square.surface.get_rect().center,10)
+                if Pieces.selectedPiece != None and square in Pieces.selectedPiece.moves:
+                    pygame.draw.circle(square.surface,"Grey",square.surface.get_rect().center,10)
 
         pygame.transform.scale(self.surface,gameScreen.get_size(),gameScreen)
 
-    def updateTurn(self):
-        global turn 
-        turn += 1
-
-        if playerColour == "White":
-            selfPieces = Pieces.whitePieces
-            opponentKing = Pieces.blackKing
-        else:
-            selfPieces = Pieces.blackPieces
-            opponentKing = Pieces.whiteKing
-
-        for piece in selfPieces:
-            piece.moves = []
-
-        status = opponentKing._inCheckmateOrStalemate()
-        if status == "Checkmate":
-            print(playerColour + " wins!!!")
-        elif status == "Stalemate":
-            print("Stalemate.")
-
-
     def getSquarePressed(self,x,y):
-        for row in self.squareGrid:
+        for row in self.grid:
             for square in row:
                 if square.scaledRect.collidepoint(x,y):
                     return square
                 
         return None
+    
+
+def updateTurn():
+    global turn
+
+    turn += 1
+
+    if Pieces.currentColour == "White":
+        for piece in Pieces.whitePieces:
+            piece.moves = []
+
+        Pieces.currentColour = "Black"
+
+    else:
+        for piece in Pieces.blackPieces:
+            piece.moves = []
+
+        Pieces.currentColour = "White"
+
+    status = getGameStatus()
+    if status == "Checkmate":
+        print("Checkmate, " + Pieces.currentColour +" Wins!!")
+    elif status == "Stalemate":
+        print("Stalemate.")
+
+def getGameStatus():
+    inCheck = False
+    noMoves = True
+
+    if Pieces.currentColour == "White":
+        currentKing = Pieces.whiteKing
+        currentPieces = Pieces.whitePieces
+        opponentPieces = Pieces.blackPieces
+        
+    else:
+        currentKing = Pieces.blackKing
+        currentPieces = Pieces.blackPieces
+        opponentPieces = Pieces.whitePieces
+    
+    for piece in opponentPieces:
+        if currentKing.square in piece._getPossibleMoves():
+            inCheck = True
+            break
+            
+    for piece in currentPieces:
+        if piece.getMoves() != []:
+            noMoves = False
+            break
+
+    if noMoves and inCheck:
+        return "Checkmate"
+    elif noMoves:
+        return "Stalemate"
+    else:
+        return "Normal"
+
 
 def main(screenSize=min(pygame.display.get_desktop_sizes()[0][0]-100,pygame.display.get_desktop_sizes()[0][1]-100)):
-    global gameScreen,board,playerColour,turn
+    global gameScreen,board,turn
+
     #screen must be a square for chess 
     gameScreen = pygame.display.set_mode((screenSize,screenSize))
     board = GameBoard()
-    playerColour = "White"
-    turn = 1
+    turn = 0
 
     running = True
     while running:
@@ -453,14 +606,13 @@ def main(screenSize=min(pygame.display.get_desktop_sizes()[0][0]-100,pygame.disp
                 if square == None:
                     break
                 
-                if Pieces.currentPiece != None and square in Pieces.currentPiece.moves:
-                    Pieces.currentPiece.move(square)
-                    playerColour = "Black" if playerColour == "White" else "White"
-                elif square.piece != None and square.piece.colour == playerColour:
-                    square.piece.getMoves()
-                    Pieces.currentPiece = square.piece
-
-                    board._update()      
+                if Pieces.selectedPiece != None and square in Pieces.selectedPiece.moves:
+                    Pieces.selectedPiece.moveTo(square)
+                    
+                elif square.piece != None and square.piece.colour == Pieces.currentColour:
+                    Pieces.selectedPiece = square.piece 
+                    Pieces.selectedPiece.getMoves() 
+                    board.updateDisplay() # Board updates to show potential moves for selected piece
                 
         pygame.display.update()
         clock.tick(20)
@@ -469,15 +621,10 @@ def main(screenSize=min(pygame.display.get_desktop_sizes()[0][0]-100,pygame.disp
 
 if __name__ == "__main__":
     main()
-    
-# Currently when pieces are taken they dont actually get removed properly
 
-# Code needs massive cleanup and refactoring
+# Need to add promoting - very easy just requires some GUI stuff 
 
-# Castling and promoting
-
-
-
+# Need to clean up code
 
 # Could make screens not require square sizing and pad out extra space with solid colour?
 # Might look bad and be better to just force square sizing and non-resizable windows
