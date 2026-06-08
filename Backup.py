@@ -5,17 +5,16 @@ pygame.font.init()
 clock = pygame.time.Clock()
 
 class Pieces:
-    pieceDict = {"Black":[],"White":[]}
-    Kings = {}
-
-    selectedPiece = None
     
+
+    blackPieces = []
+    whitePieces = []
+
     currentColour = "White"
-    currentPieces = pieceDict[currentColour]
-
-    opponentColour = "Black"
-    opponentPieces = pieceDict[opponentColour]
+    currentPieces = whitePieces
+    opponentPieces = blackPieces
     
+    selectedPiece = None
 
     def __init__(self,name,square,colour):
         self.name = name
@@ -28,7 +27,6 @@ class Pieces:
             case "King":
                 self.movements = [1,1,1]
                 self.hasMoved = False
-                Pieces.Kings[self.colour] = self
             case "Pawn":
                 # ver reduces to 1 after 1 move
                 self.movements = [0,2,1]
@@ -46,7 +44,14 @@ class Pieces:
                 raise ValueError("Invalid Name for Piece Object")
 
         self._createImage()
-        Pieces.pieceDict[self.colour].append(self)
+        if self.colour == "White":
+            Pieces.whitePieces.append(self)
+            if self.name == "King":
+                Pieces.whiteKing = self
+        else:
+            Pieces.blackPieces.append(self)
+            if self.name == "King":
+                Pieces.blackKing = self
 
     @property
     def row(self):
@@ -68,39 +73,6 @@ class Pieces:
         cols = ["A","B","C","D","E","F","G","H"]
         return cols[self.col] + str(self.row+1)
 
-    
-    def _getMoveSubset(self,rowEnd,colEnd,rowStep,colStep,capturesOnly=False,noCaptures=False):
-        moveSubset = []
-        # This is to prevent pawns moving backwards
-        if self.row == rowEnd and self.col == colEnd:
-            return []
-        
-        # Needed so piece doesn't see itself and break out of loop
-        row = self.row + rowStep
-        col = self.col + colStep
-        while True:
-            if row == rowEnd and rowStep != 0:
-                break
-            elif col == colEnd and colStep != 0:
-                break
-
-            square = board.grid[row][col]
-
-            if square.piece == None and not capturesOnly:
-                moveSubset.append(square)
-            elif square.piece == None and capturesOnly:
-                break
-
-            elif square.piece.colour != self.colour and not noCaptures:
-                moveSubset.append(square)
-                break
-            else:
-                break
-
-            row += rowStep
-            col += colStep
-
-        return moveSubset
 
     def _getHorizontalMoves(self):
         moves = []
@@ -110,10 +82,28 @@ class Pieces:
         minHorizontal = max(0,self.col-self.movements[0])-1
 
         #Check larger Column values - right from perspective of Black
-        moves.extend(self._getMoveSubset(self.row,maxHorizontal,0,1))
+        for colNum in range(self.col+1, maxHorizontal):
+            square = board.grid[self.row][colNum]
 
+            if square.piece == None:
+                moves.append(square)
+            elif square.piece.colour != self.colour:
+                moves.append(square)
+                break
+            else:
+                break
+        
         #Check smaller Column values
-        moves.extend(self._getMoveSubset(self.row,minHorizontal,0,-1))
+        for colNum in range(self.col-1, minHorizontal,-1):
+            square = board.grid[self.row][colNum]
+
+            if square.piece == None:
+                moves.append(square)
+            elif square.piece.colour != self.colour:
+                moves.append(square)
+                break
+            else:
+                break
 
         return moves
 
@@ -126,45 +116,120 @@ class Pieces:
 
         # Dissallows pawns from moving backwards
         if self.name == "Pawn" and self.colour == "White":
-            minVertical = self.row-1
+            minVertical = self.row
         elif self.name == "Pawn" and self.colour == "Black":
-            maxVertical = self.row+1
+            maxVertical = self.row
 
         #Check larger Row values - down from perspective of Black
-        moves.extend(self._getMoveSubset(maxVertical,self.col,1,0,noCaptures=(self.name=="Pawn")))
+        for rowNum in range(self.row+1, maxVertical):
+            square = board.grid[rowNum][self.col]
 
+            if square.piece == None:
+                moves.append(square)
+            elif square.piece.colour != self.colour and self.name != "Pawn":
+                moves.append(square)
+                break
+            else:
+                break
+        
         #Check smaller Row values
-        moves.extend(self._getMoveSubset(minVertical,self.col,-1,0,noCaptures=(self.name=="Pawn")))
+        for rowNum in range(self.row-1, minVertical, -1):
+            square = board.grid[rowNum][self.col]
+
+            if square.piece == None:
+                moves.append(square)
+            elif square.piece.colour != self.colour and self.name != "Pawn":
+                moves.append(square)
+                break
+            else:
+                break
 
         return moves
 
     def _getDiagonalMoves(self):
         moves = []
         
-        minHorizontal = max(0,self.col-self.movements[2])-1
-        maxHorizontal = min(7,self.col+self.movements[2])+1
-        minVertical = max(0,self.row-self.movements[2])-1
-        maxVertical = min(7,self.row+self.movements[2])+1
+        minHorizontal = max(0,self.col-self.movements[2])
+        maxHorizontal = min(7,self.col+self.movements[2])
+        minVertical = max(0,self.row-self.movements[2])
+        maxVertical = min(7,self.row+self.movements[2])
 
         # Dissallows pawns from moving backwards
         if self.name == "Pawn" and self.colour == "White":
-            minVertical = self.row-1
+            minVertical = self.row
         elif self.name == "Pawn" and self.colour == "Black":
-            maxVertical = self.row+1
+            maxVertical = self.row
         
         # "Down Left" means down left from perspective of Black pieces
 
         # "Up Left"
-        moves.extend(self._getMoveSubset(minVertical,minHorizontal,-1,-1,capturesOnly=(self.name=="Pawn")))
+        rowNum = self.row-1
+        colNum = self.col-1
+        while rowNum>=minVertical and colNum>=minHorizontal:
+            square = board.grid[rowNum][colNum]
+
+            if square.piece == None and self.name != "Pawn":
+                moves.append(square)
+            elif square.piece != None and square.piece.colour != self.colour:
+                moves.append(square)
+                break
+            else:
+                break
+
+            rowNum-=1
+            colNum-=1
 
         # "Up Right"
-        moves.extend(self._getMoveSubset(minVertical,maxHorizontal,-1,1,capturesOnly=(self.name=="Pawn")))
+        rowNum = self.row-1
+        colNum = self.col+1
+
+        while rowNum>=minVertical and colNum<=maxHorizontal:
+            square = board.grid[rowNum][colNum]
+
+            if square.piece == None and self.name != "Pawn":
+                moves.append(square)
+            elif square.piece != None and square.piece.colour != self.colour:
+                moves.append(square)
+                break
+            else:
+                break
+
+            rowNum-=1
+            colNum+=1
 
         # "Down Left"
-        moves.extend(self._getMoveSubset(maxVertical,minHorizontal,1,-1,capturesOnly=(self.name=="Pawn")))
+        rowNum = self.row+1
+        colNum = self.col-1
+        while rowNum<=maxVertical and colNum>=minHorizontal: 
+            square = board.grid[rowNum][colNum]
+
+            if square.piece == None and self.name != "Pawn":
+                moves.append(square)
+            elif square.piece != None and square.piece.colour != self.colour:
+                moves.append(square)
+                break
+            else:
+                break
+
+            rowNum+=1
+            colNum-=1
 
         # "Down Right"
-        moves.extend(self._getMoveSubset(maxVertical,maxHorizontal,1,1,capturesOnly=(self.name=="Pawn")))
+        rowNum = self.row+1
+        colNum = self.col+1
+        while rowNum<=maxVertical and colNum<=maxHorizontal:
+            square = board.grid[rowNum][colNum]
+
+            if square.piece == None and self.name != "Pawn":
+                moves.append(square)
+            elif square.piece != None and square.piece.colour != self.colour:
+                moves.append(square)
+                break
+            else:
+                break
+
+            rowNum+=1
+            colNum+=1
 
         return moves
 
@@ -208,8 +273,9 @@ class Pieces:
     def _getCastleMoves(self):
         moves = []
 
-        pieces = Pieces.pieceDict[self.colour]
-        opponentPieces = Pieces.pieceDict["White"] if self.colour == "Black" else Pieces.pieceDict["Black"]
+        # Not using Pieces.currentPieces etc here to avoid issues when determining check
+        pieces = Pieces.whitePieces if self.colour == "White" else Pieces.blackPieces
+        opponentPieces = Pieces.whitePieces if self.colour == "Black" else Pieces.blackPieces
 
         attackedSquares = set()
 
@@ -264,8 +330,8 @@ class Pieces:
         validMoves = []
 
         # Test if own king in check if move is taken
-        currentKing = Pieces.Kings[self.colour]
-        opponentPieces = Pieces.opponentPieces
+        currentKing = Pieces.whiteKing if Pieces.currentColour == "White" else Pieces.blackKing
+        opponentPieces = Pieces.whitePieces if Pieces.currentColour == "Black" else Pieces.blackPieces
         originalLocation = self.square
 
         for move in possibleMoves:
@@ -366,7 +432,10 @@ class Pieces:
 
         # Remove any piece landed on
         if destination.piece != None:
-            Pieces.pieceDict[Pieces.opponentColour].remove(destination.piece)
+            if self.colour == "White":
+                Pieces.blackPieces.remove(destination.piece)
+            else:
+                Pieces.whitePieces.remove(destination.piece)
             destination.piece = None
 
         # Move piece
@@ -436,7 +505,8 @@ class Pieces:
 
 
         # Replace piece
-        Pieces.pieceDict[self.colour].remove(self)
+        pieces = Pieces.whitePieces if self.colour == "White" else Pieces.blackPieces
+        pieces.remove(self)
         self.square.piece = Pieces(chosenPromotion,self.square,self.colour) # Automatically added to pieces
 
 class Square:
@@ -533,7 +603,7 @@ def getGameStatus():
     inCheck = False
     noMoves = True
 
-    currentKing = Pieces.Kings[Pieces.currentColour]
+    currentKing = Pieces.whiteKing if Pieces.currentColour == "White" else Pieces.blackKing
     
     for piece in Pieces.opponentPieces:
         if currentKing.square in piece._getPossibleMoves():
@@ -575,16 +645,18 @@ def displayEndScreen(status):
 
 def updateTurn():
     global turn
+
     turn += 1
 
     for piece in Pieces.currentPieces:
         piece.moves = []
 
-    Pieces.currentColour = "White" if Pieces.currentColour == "Black" else "Black"
-    Pieces.opponentColour = "Black" if Pieces.currentColour == "White" else "White"
-    Pieces.currentPieces = Pieces.pieceDict[Pieces.currentColour]
-    Pieces.opponentPieces = Pieces.pieceDict[Pieces.opponentColour]
-    
+    Pieces.currentColour = "Black" if Pieces.currentColour == "White" else "White"
+
+    temp = Pieces.currentPieces
+    Pieces.currentPieces = Pieces.opponentPieces
+    Pieces.opponentPieces = Pieces.opponentPieces = temp
+
     status = getGameStatus()
     
     if status != "Normal":
@@ -626,6 +698,8 @@ def main(screenSize=min(pygame.display.get_desktop_sizes()[0][0]-100,pygame.disp
 
 if __name__ == "__main__":
     main()
+
+# Need to clean up code
 
 # Could make screens not require square sizing and pad out extra space with solid colour?
 # Might look bad and be better to just force square sizing and non-resizable windows

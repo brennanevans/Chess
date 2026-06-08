@@ -627,6 +627,8 @@ def main(screenSize=min(pygame.display.get_desktop_sizes()[0][0]-100,pygame.disp
 if __name__ == "__main__":
     main()
 
+# Need to clean up code
+
 # Could make screens not require square sizing and pad out extra space with solid colour?
 # Might look bad and be better to just force square sizing and non-resizable windows
 
