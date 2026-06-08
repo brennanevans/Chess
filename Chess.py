@@ -269,6 +269,9 @@ class Pieces:
         opponentPieces = Pieces.whitePieces if self.colour == "Black" else Pieces.blackPieces
 
         attackedSquares = set()
+
+        longRook = None
+        shortRook = None
         
         for piece in opponentPieces:
             moveset = set(piece._getPossibleMoves(ignoreCastle = True)) # ignoring check
@@ -282,16 +285,16 @@ class Pieces:
                 shortRook = piece
             elif piece.name == "Rook" and piece.col == 0:
                 longRook = piece
-        
+
         # Short castle
-        if not shortRook.hasMoved:
+        if shortRook != None and not shortRook.hasMoved:
             requiredSquares = [board.grid[self.row][1],board.grid[self.row][2]]
             if set(requiredSquares).intersection(attackedSquares) == set():
                 if requiredSquares[0].piece == None and requiredSquares[1].piece == None:
                     moves.append(board.grid[self.row][1])
 
         # Long castle
-        if not longRook.hasMoved:
+        if longRook != None and not longRook.hasMoved:
             requiredSquares = [board.grid[self.row][4],board.grid[self.row][5],board.grid[self.row][6]]
             if set(requiredSquares).intersection(attackedSquares) == set():
                 if requiredSquares[0].piece == None and requiredSquares[1].piece == None and requiredSquares[2].piece == None:
@@ -435,10 +438,69 @@ class Pieces:
 
         Pieces.selectedPiece = None
 
+        if self.name == "Pawn" and self.row in [0,7]:
+            self.promote()
+
         board.updateDisplay()
         updateTurn()
         return True
+    
+    def _displayOptions(row,col,colour):
+        promoteSquares = []
+        if row == 0:
+            for i in range(row,row+4):
+                promoteSquares.append(board.grid[i][col])
+        else:
+            for i in range(row,row-4,-1):
+                promoteSquares.append(board.grid[i][col])
 
+        pieceCol = ["Queen","Knight","Rook","Bishop"]
+        
+        if colour == "White":
+            promoteSquares = promoteSquares[::-1] # Reverse direction so same for both colours
+
+        pieceNum = 0
+        for square in promoteSquares:
+            rect = square.scaledRect
+            testSurface = pygame.Surface((rect.w+1,rect.h+1))
+            testSurface.fill("#F1F1F1")
+
+            image = pygame.image.load(f"Assets/{colour}Pieces/{pieceCol[pieceNum]}{colour}.png")
+            image = pygame.transform.smoothscale(image,(rect.w,rect.h))
+            testSurface.blit(image,(0,0))
+            gameScreen.blit(testSurface,rect)
+
+            pieceNum+=1
+
+        pygame.display.update()
+
+        return promoteSquares
+
+    def promote(self):
+        if self.name != "Pawn":
+            raise ValueError("Can only promote pawns")
+        
+        # Show GUI screen for selecting which piece to choose
+        options = Pieces._displayOptions(self.row,self.col,self.colour)
+        pieceCol = ["Queen","Knight","Rook","Bishop"]
+        chosenPromotion = ""
+
+        optionNotClicked = True
+        while optionNotClicked:
+            for event in pygame.event.get():
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    x,y = pygame.mouse.get_pos()
+                    square = board.getSquarePressed(x,y)
+                    if square in options:
+                        chosenPromotion = pieceCol[options.index(square)]
+                        optionNotClicked = False
+                        break
+
+
+        # Replace piece
+        pieces = Pieces.whitePieces if self.colour == "White" else Pieces.blackPieces
+        pieces.remove(self)
+        self.square.piece = Pieces(chosenPromotion,self.square,self.colour) # Automatically added to pieces
 
 class Square:
     def __init__(self,surface:pygame.Surface,row,column,colour):
