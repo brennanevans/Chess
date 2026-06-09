@@ -5,8 +5,28 @@ pygame.font.init()
 clock = pygame.time.Clock()
 
 class Pieces:
+    """
+    Piece objects are chess pieces each with information about themselves.
+
+    Pieces is used to get any information involving the chess pieces currently on
+    the board. This includes both information about individual pieces via 
+    objects, as well as collections of pieces.
+
+    Attributes:
+        pieceDict(dict): The keys are the piece colours and the values are the
+          lists of pieces of that colour.
+
+        kingDict(dict): The keys are the piece colours and the values are the
+          Piece objects of the colour with the name "King".
+
+        selectedPiece(Piece): The currently selected piece.
+        currentColour(str): The colour of the pieces of the current player.
+        currentPieces(list): The pieces belonging to the current player.
+        opponentColour(str): The colour of the pieces of the other player.
+        opponentPieces(list): The pieces belonging to the other player.
+    """
     pieceDict = {"Black":[],"White":[]}
-    Kings = {}
+    kingDict = {}
 
     selectedPiece = None
     
@@ -17,7 +37,23 @@ class Pieces:
     opponentPieces = pieceDict[opponentColour]
     
 
-    def __init__(self,name,square,colour):
+    def __init__(self,name:str,square,colour:str):
+        """
+        Creates a piece based on the parameters passed.
+
+        Args:
+            name: The type of piece to be created, e.g. Pawn.
+            square(Square): The square object on which the piece is currently
+              located.
+            colour: The colour of the piece.
+
+        Raises:
+            ValueError: If the name parameter is not a valid piece type.
+        
+
+        """ 
+        name = name.capitalize()
+
         self.name = name
         self.square = square
         self.colour = colour
@@ -28,7 +64,7 @@ class Pieces:
             case "King":
                 self.movements = [1,1,1]
                 self.hasMoved = False
-                Pieces.Kings[self.colour] = self
+                Pieces.kingDict[self.colour] = self
             case "Pawn":
                 # ver reduces to 1 after 1 move
                 self.movements = [0,2,1]
@@ -50,13 +86,18 @@ class Pieces:
 
     @property
     def row(self):
+        """The current row of the square that the piece is on."""
         return self.square.row
 
     @property
     def col(self):
+        """The current column of the square that the piece is on."""
         return self.square.col
     
     def _createImage(self):
+        """
+        Loads the image for this piece and scales it to an appropriate size.
+        """
         imagePath = f"Assets/{self.colour}Pieces/{self.name}{self.colour}.png"
         self.image = pygame.image.load(imagePath)
         self.image = pygame.transform.smoothscale(self.image,(50,50))
@@ -69,7 +110,32 @@ class Pieces:
         return cols[self.col] + str(self.row+1)
 
     
-    def _getMoveSubset(self,rowEnd,colEnd,rowStep,colStep,capturesOnly=False,noCaptures=False):
+    def _getMoveSubset(self,rowEnd:int,colEnd:int,rowStep:int,colStep:int,capturesOnly=False,noCaptures=False):
+        """
+        Helper method that gets all the possible moves between 2 points.
+
+        This method is used to simplify the logic of the other methods
+        involving getting moves. The moves returned by this method INCLUDE
+        those that would result in the King being taken as this is handled
+        by a seperate method.
+
+        Possible here refers to whether the move is allowed by all other rules
+        of chess such as the inability to take one's own pieces, or move
+        through pieces.
+        
+        Args:
+            rowEnd: The index of the final row to check in board.grid.
+            colEnd: The index of the final column to check in board.grid.
+            rowStep: The amount to increment or decrement row indices.
+            colStep: The amount to increment or decremenet column indicies.
+            capturesOnly: True if should only allow moves which take a piece,
+              else False.
+            noCaptures: True if shouldn't allow moves which take a piece, else 
+              False.
+
+        Returns:
+            list: All the possible moves between the 2 points.
+        """
         moveSubset = []
         # This is to prevent pawns moving backwards
         if self.row == rowEnd and self.col == colEnd:
@@ -103,6 +169,12 @@ class Pieces:
         return moveSubset
 
     def _getHorizontalMoves(self):
+        """
+        Gets all the horizontal moves self can make, ignoring check.
+    
+        Returns:
+            list: All the possible horizontal moves.
+        """
         moves = []
 
         # -1 and +1 as range has exclusive stop
@@ -118,6 +190,12 @@ class Pieces:
         return moves
 
     def _getVerticalMoves(self):
+        """
+        Gets all the vertical moves self can make, ignoring check.
+    
+        Returns:
+            list: All the possible vertical moves.
+        """
         moves = []
 
         # -1 and +1 as range has exclusive stop
@@ -139,6 +217,12 @@ class Pieces:
         return moves
 
     def _getDiagonalMoves(self):
+        """
+        Gets all the diagonal moves self can make, ignoring check.
+    
+        Returns:
+            list: All the possible diagonal moves.
+        """
         moves = []
         
         minHorizontal = max(0,self.col-self.movements[2])-1
@@ -169,6 +253,12 @@ class Pieces:
         return moves
 
     def _getKnightMoves(self):
+        """
+        Gets all the possible knight moves self can make, ignoring check.
+        
+        Returns:
+            list: All the possible knight moves.
+        """
         moves = []
         possibleOffsets = [(1,-2),(1,2),(-1,-2),(-1,2),(2,-1),(2,1),(-2,-1),(-2,1)]
         for offset in possibleOffsets:
@@ -182,6 +272,17 @@ class Pieces:
         return moves
 
     def _getEnPassantMoves(self):
+        """
+        Gets all the possible En Passant moves self can make, ignoring check.
+
+        En Passant is a special movement type for Pawns in chess. It requires
+        an opponent's pawn to have moved 2 spaces and land horizontally 
+        adjacent to it. More information can be found here:
+        https://en.wikipedia.org/wiki/En_passant
+        
+        Returns:
+            list: All the possible En Passant moves.
+        """
         global turn
         moves = []
 
@@ -206,6 +307,20 @@ class Pieces:
         return moves
 
     def _getCastleMoves(self):
+        """
+        Gets all the possible Castling moves self can make.
+
+        Castling is a special movement type for Kings with specific 
+        requirements which can be found here: 
+        https://en.wikipedia.org/wiki/Castling
+
+        Note this method, unlike the other get_*Moves methods DOES NOT return 
+        any moves that would result in the current King ending in (or moving 
+        through) check.
+
+        Returns:
+            list: All the possible Castling moves.
+        """
         moves = []
 
         pieces = Pieces.pieceDict[self.colour]
@@ -245,7 +360,17 @@ class Pieces:
 
         return moves
 
-    def _getPossibleMoves(self,ignoreCastle=False) -> list:
+    def _getPossibleMoves(self,ignoreCastle=False):
+        """
+        Gets all the possible moves that self can make, ignoring check.
+
+        Args:
+            ignoreCastle: Whether or not Castling should be considered.
+
+        Returns:
+            list: All the Square objects representing possible moves self can
+              make, potentially excluding Castling.
+        """
         possibleMoves = []
         possibleMoves.extend(self._getHorizontalMoves())
         possibleMoves.extend(self._getVerticalMoves())
@@ -260,11 +385,26 @@ class Pieces:
         
         return possibleMoves
 
-    def _noCheckMoves(self,possibleMoves):
+    def _noCheckMoves(self,possibleMoves:list):
+        """
+        Gets all the moves from possibleMoves not resulting in Checkmate.
+
+        This method returns all the moves from possibleMoves that wouldn't
+        leave the current player's King available to be taken next turn as
+        these moves can not be made in chess.
+
+        Args:
+            possibleMoves: All the Square objects that represent moves self
+              could make that could potentially be legal.
+
+        Returns:
+            list: All the Square objects that represent moves self can make
+              not resulting in Checkmate for the King of their own colour.
+        """
         validMoves = []
 
         # Test if own king in check if move is taken
-        currentKing = Pieces.Kings[self.colour]
+        currentKing = Pieces.kingDict[self.colour]
         opponentPieces = Pieces.opponentPieces
         originalLocation = self.square
 
@@ -310,7 +450,7 @@ class Pieces:
                 opponentPieces.append(destinationPiece)
                 destination.piece = destinationPiece
 
-            elif enPassantPiece != None: # Put enPassanted piece back
+            elif enPassantPiece != None: # Put En Passanted piece back
                 opponentPieces.append(enPassantPiece)
                 enPassantSquare.piece = enPassantPiece
 
@@ -320,6 +460,18 @@ class Pieces:
         return validMoves
 
     def getMoves(self):
+        """
+        Gets all the legal moves self can make.
+
+        Legal here refers to moves which follow ALL the rules of chess. 
+        Examples of illegal moves include: moves that would take a piece of 
+        the same colour as self, moves that would result in the current King
+        being under attack ect.
+
+        Returns:
+            list: All the legal moves self can make.
+
+        """
         possibleMoves = self._getPossibleMoves()
         validMoves = self._noCheckMoves(possibleMoves)
 
@@ -328,7 +480,23 @@ class Pieces:
 
 
     def moveTo(self,destination):
-        if destination not in self.moves:
+        """
+        Moves self to a specified square.
+
+        This method will update self.square and destination.piece provided
+        destination is in self's legal moves. It also handles the removal of
+        any pieces including those indirectly taken in En Passant.
+
+        If the move is determined to be castling a King, it will also move the
+        complementing rook to the correct location.
+        
+        Args:
+            destination(Square): The square the piece should be moved to.
+
+        Returns:
+            boolean: True if the move is legal, else False.
+        """
+        if destination not in self.getMoves():
             return False
         
         # Set max vertical movement to 1
@@ -383,7 +551,20 @@ class Pieces:
         updateTurn()
         return True
     
-    def _displayOptions(row,col,colour):
+    def _displayOptions(row:int,col:int,colour:str):
+        #TODO does this belong more in GameBoard??
+        """
+        Displays the options for promotion on the screen.
+
+        Args:
+            row: The row of the piece to be promoted.
+            col: The column of the piece to be promoted.
+            colour: The colour of the piece to be promoted.
+
+        Returns:
+            list: All the Square objects temporarily containing the promotion
+              options.
+        """
         promoteSquares = []
         if row == 0:
             for i in range(row,row+4):
@@ -415,6 +596,12 @@ class Pieces:
         return promoteSquares
 
     def promote(self):
+        """
+        Replaces self with a new Piece object.
+
+        This method halts program running until a promotion choice is made 
+        and will update all necessary parameters with the new Piece object.
+        """
         if self.name != "Pawn":
             raise ValueError("Can only promote pawns")
         
@@ -423,6 +610,7 @@ class Pieces:
         pieceCol = ["Queen","Knight","Rook","Bishop"]
         chosenPromotion = ""
 
+        # Halt program and listen for events until selection is made
         optionNotClicked = True
         while optionNotClicked:
             for event in pygame.event.get():
@@ -533,7 +721,7 @@ def getGameStatus():
     inCheck = False
     noMoves = True
 
-    currentKing = Pieces.Kings[Pieces.currentColour]
+    currentKing = Pieces.kingDict[Pieces.currentColour]
     
     for piece in Pieces.opponentPieces:
         if currentKing.square in piece._getPossibleMoves():
@@ -611,7 +799,7 @@ def main(screenSize=min(pygame.display.get_desktop_sizes()[0][0]-100,pygame.disp
                 if square == None:
                     break
                 
-                if Pieces.selectedPiece != None and square in Pieces.selectedPiece.moves:
+                if Pieces.selectedPiece != None:
                     Pieces.selectedPiece.moveTo(square)
                     
                 elif square.piece != None and square.piece.colour == Pieces.currentColour:
