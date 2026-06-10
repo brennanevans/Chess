@@ -49,8 +49,6 @@ class Pieces:
 
         Raises:
             ValueError: If the name parameter is not a valid piece type.
-        
-
         """ 
         name = name.capitalize()
 
@@ -86,12 +84,12 @@ class Pieces:
 
     @property
     def row(self):
-        """The current row of the square that the piece is on."""
+        """The current row of the square the piece is on (zero indexed)."""
         return self.square.row
 
     @property
     def col(self):
-        """The current column of the square that the piece is on."""
+        """The current column of the square the piece is on (zero indexed)."""
         return self.square.col
     
     def _createImage(self):
@@ -628,7 +626,20 @@ class Pieces:
         self.square.piece = Pieces(chosenPromotion,self.square,self.colour) # Automatically added to pieces
 
 class Square:
-    def __init__(self,surface:pygame.Surface,row,column,colour):
+    """
+    Squares on the chess board which can be associated with a piece.
+    """
+    def __init__(self,surface:pygame.Surface,row:int,column:int,colour:str):
+        """
+        Creates a square based on the parameters passed.
+
+        Args:
+            surface: The visual surface that fills the square on the screen.
+            row: The row of the square (zero indexed).
+            column: The column of the square (zero indexed).
+            colour: The background colour of the square.
+
+        """ 
         self.surface = surface
         self.scaledRect = pygame.Rect(0,0,0,0)
 
@@ -646,11 +657,22 @@ class Square:
         return "Square(" + self.notation + ")"   
 
 class GameBoard:
+    """
+    The board on which the game is played.
+
+    Attributes:
+        SIZE(int): The number of rows and columns on the board.
+        COLOUR1(str): One of the two colours of the squares on the board.
+        COLOUR2(str): The other of the two colours.
+    """
     SIZE = 8
     COLOUR1 = "#D7BA89"
     COLOUR2 = "#56342A"
 
     def __init__(self):
+        """
+        Creates a new chess board and puts pieces into their intitial squares.
+        """
         self.squareSize = 50
         self.boardSize = 400
         self.surface = pygame.Surface((self.boardSize,self.boardSize))
@@ -662,6 +684,9 @@ class GameBoard:
         self.updateDisplay()
 
     def _createBoard(self):
+        """
+        Creates the Square objects and arranges them into a grid.
+        """
         currentColour = GameBoard.COLOUR1
 
         for row in range(GameBoard.SIZE):
@@ -684,6 +709,9 @@ class GameBoard:
             self.grid.append(squaresRow)
 
     def _addPieces(self):
+        """
+        Creates new Piece objects and puts them into their intial positions.
+        """
         rows = [self.grid[0],self.grid[1],self.grid[6],self.grid[7]]
         pieceRow = ["Rook","Knight","Bishop","King","Queen","Bishop","Knight","Rook"]
 
@@ -696,6 +724,9 @@ class GameBoard:
                     square.piece = Pieces("Pawn",square,colour)
     
     def updateDisplay(self):
+        """
+        Clears the screen, replaces the pieces and draws the move indicators.
+        """
         for row in self.grid:
             for square in row:
                 square.surface.fill(square.colour) # clear square
@@ -708,7 +739,17 @@ class GameBoard:
 
         pygame.transform.scale(self.surface,gameScreen.get_size(),gameScreen)
 
-    def getSquarePressed(self,x,y):
+    def getSquarePressed(self,x:int,y:int):
+        """
+        Returns the square that has been selected.
+
+        Ars:
+            x: The x position of the mouse cursor.
+            y: The y position of the mouse cursor.
+
+        Returns:
+            Square: The square that was selected, else None.
+        """
         for row in self.grid:
             for square in row:
                 if square.scaledRect.collidepoint(x,y):
@@ -718,6 +759,13 @@ class GameBoard:
     
 
 def getGameStatus():
+    """
+    Returns the current status of the game.
+
+    Returns:
+        str: "Checkmate" if current player is in checkmate, "Stalemate" if
+          stalemate has occurred, else "Normal".
+    """
     inCheck = False
     noMoves = True
 
@@ -740,14 +788,25 @@ def getGameStatus():
     else:
         return "Normal"
 
-def displayEndScreen(status):
+def displayEndScreen(status:str):
+    """
+    Displays the required end screen depending on the status of the game.
+
+    Args:
+        status: The current status of the game.
+
+    Raises:
+        ValueError: If status is not "Checkmate" or "Stalemate".
+    """
     font = pygame.font.SysFont("Arial",50)
 
     if status == "Checkmate":
         colour = "White" if Pieces.currentColour == "Black" else "Black"
         text = f"Checkmate, {colour} Wins!!"
-    else:
+    elif status == "Stalemate":
         text = "Stalemate."
+    else:
+        raise ValueError("Status should be Checkmate or Stalemate.")
 
 
     textbox = pygame.font.Font.render(font,text,False,"Black","White")
@@ -762,6 +821,9 @@ def displayEndScreen(status):
     pygame.time.wait(1000)
 
 def updateTurn():
+    """
+    Increments the turn counter and updates the current player.
+    """
     global turn
     turn += 1
 
@@ -780,6 +842,16 @@ def updateTurn():
 
 
 def main(screenSize=min(pygame.display.get_desktop_sizes()[0][0]-100,pygame.display.get_desktop_sizes()[0][1]-100)):
+    """
+    Contains the main event loop for the game.
+
+    This method should be called alone to run the full game. It sets up the
+    main display for pygame, handles all player input (except that of 
+    promotion) and calls all other methods where needed.
+
+    Args:
+        screenSize: The width and height of the screen.
+    """
     global gameScreen,board,turn
 
     #screen must be a square for chess 
