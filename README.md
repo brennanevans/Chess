@@ -3,8 +3,6 @@
 My own implementation of the board game Chess including a custom chess AI opponent. 
 
 ## TODO:
-- Finish game
-- Document and refactor game code
 - Make AI opponent
 - Document and refactor AI code
 
